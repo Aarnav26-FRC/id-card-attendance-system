@@ -10,6 +10,8 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <!-- Tesseract.js for robust client-side OCR -->
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+    <!-- PeerJS for instant P2P Phone-to-Laptop Wireless Sync -->
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; background-color: #0b1120; }
@@ -40,6 +42,12 @@
     </style>
 </head>
 <body class="text-slate-100 min-h-screen flex flex-col">
+
+    <!-- Remote Phone Scanner Active Banner (Visible when ?room=... is opened on phone) -->
+    <div id="remote-scanner-banner" class="hidden bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-4 py-2 text-center text-xs font-semibold shadow-md flex items-center justify-center gap-2 sticky top-0 z-50">
+        <i data-lucide="radio" class="w-4 h-4 animate-pulse"></i>
+        <span id="remote-scanner-status-text">📱 Connected to Host Laptop! Scans here will announce live on the laptop.</span>
+    </div>
 
     <!-- Header Navigation -->
     <header class="border-b border-slate-800 bg-slate-900/90 sticky top-0 z-50 backdrop-blur-md px-6 py-3.5">
@@ -96,35 +104,55 @@
     <div id="iphone-modal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
         <div class="glass-card max-w-md w-full p-6 rounded-2xl border border-slate-700 shadow-2xl relative">
             <button id="btn-close-iphone-modal" class="absolute top-4 right-4 text-slate-400 hover:text-white text-lg">&times;</button>
-            <div class="flex items-center gap-3 mb-4">
+            <div class="flex items-center gap-3 mb-3">
                 <div class="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
                     <i data-lucide="smartphone" class="w-6 h-6"></i>
                 </div>
                 <div>
-                    <h3 class="font-bold text-white text-base">Use iPhone as Scanner</h3>
-                    <p class="text-xs text-slate-400">4K Autofocus Macro Camera</p>
+                    <h3 class="font-bold text-white text-base">Use Phone as Remote Scanner</h3>
+                    <p class="text-xs text-slate-400">Phone scans card ➔ Laptop announces aloud &amp; updates live</p>
                 </div>
             </div>
             
-            <div class="bg-slate-900/90 p-4 rounded-xl border border-slate-800 space-y-3 text-xs text-slate-300">
+            <!-- Tab switches: Live Cloud QR Sync vs Local Wi-Fi Flask -->
+            <div class="flex rounded-lg bg-slate-900 p-1 mb-3 text-xs border border-slate-800">
+                <button id="tab-p2p-btn" class="flex-1 py-1.5 rounded-md bg-blue-600 text-white font-medium transition" onclick="switchSyncTab('p2p')">⚡ Instant QR Sync (Cloud)</button>
+                <button id="tab-lan-btn" class="flex-1 py-1.5 rounded-md text-slate-400 hover:text-white font-medium transition" onclick="switchSyncTab('lan')">📶 Local Wi-Fi (Flask)</button>
+            </div>
+
+            <!-- Tab 1: Live Cloud QR Sync (Works anywhere over 4G/5G/Wi-Fi without local server) -->
+            <div id="sync-panel-p2p" class="bg-slate-900/90 p-4 rounded-xl border border-slate-800 space-y-3 text-xs text-slate-300 text-center">
+                <p class="text-slate-400 text-[11px]">Scan this QR code with your iPhone or Android camera to immediately pair with this laptop:</p>
+                <div class="flex justify-center my-1">
+                    <img id="qr-code-img" src="" alt="QR Code" class="w-40 h-40 rounded-xl bg-white p-2 shadow-lg border border-slate-700">
+                </div>
+                <div id="p2p-status-box" class="flex items-center justify-center gap-2 py-1 px-3 rounded-full bg-slate-950 border border-slate-800 text-[11px]">
+                    <span id="p2p-status-dot" class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                    <span id="p2p-status-text" class="text-slate-300">Waiting for phone to scan...</span>
+                </div>
+                <div class="text-[10px] text-slate-500 break-all select-all font-mono" id="p2p-url-display"></div>
+            </div>
+
+            <!-- Tab 2: Local Wi-Fi Flask -->
+            <div id="sync-panel-lan" class="hidden bg-slate-900/90 p-4 rounded-xl border border-slate-800 space-y-3 text-xs text-slate-300">
                 <div class="flex items-start gap-2">
                     <span class="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] flex-shrink-0 mt-0.5">1</span>
-                    <span>Connect your iPhone to the <strong>same Wi-Fi or mobile hotspot</strong> as this laptop.</span>
+                    <span>Connect your phone to the <strong>same Wi-Fi or mobile hotspot</strong> as this laptop.</span>
                 </div>
                 <div class="flex items-start gap-2">
                     <span class="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] flex-shrink-0 mt-0.5">2</span>
-                    <span>Open <strong>Safari</strong> on your iPhone and type:</span>
+                    <span>Open <strong>Safari / Chrome</strong> on your phone and type:</span>
                 </div>
                 <div class="bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-center font-mono text-emerald-400 font-bold select-all text-sm tracking-wide">
-                    <span id="iphone-lan-url">http://10.3.55.175:5000</span>
+                    <span id="iphone-lan-url">http://127.0.0.1:5000</span>
                 </div>
                 <div class="flex items-start gap-2">
                     <span class="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-[10px] flex-shrink-0 mt-0.5">3</span>
-                    <span>Allow camera access in Safari. Your iPhone rear camera will automatically activate and stream with autofocus! Attendance logs straight to this screen.</span>
+                    <span>Ensure you started the server with <code>python app.py</code>.</span>
                 </div>
             </div>
 
-            <button onclick="document.getElementById('iphone-modal').classList.add('hidden')" class="w-full mt-4 bg-blue-600 hover:bg-blue-500 text-white font-medium py-2 rounded-xl text-xs transition">
+            <button onclick="document.getElementById('iphone-modal').classList.add('hidden')" class="w-full mt-3 bg-blue-600 hover:bg-blue-500 text-white font-medium py-2 rounded-xl text-xs transition">
                 Got It
             </button>
         </div>
@@ -959,6 +987,15 @@
             showToast(`✅ Verified! Attendance marked for ${student.name} (${cleanRoll}).`, true);
             speakFeedback(`Attendance marked for ${student.name}`);
             renderLocalUI();
+
+            // Broadcast to connected host laptop if this device is a remote phone scanner
+            broadcastToHost({
+                roll: cleanRoll,
+                name: student.name,
+                department: student.department,
+                time: nowTime,
+                date: today
+            });
         }
 
         // Real-Time Attendance Synchronization & Audio Broadcast System
@@ -991,6 +1028,14 @@
                 showToast(`✅ ${res.message}`, true);
                 fetchStats();
                 fetchAttendance();
+
+                broadcastToHost({
+                    roll: res.roll_number,
+                    name: res.name,
+                    department: res.department || 'BTech - CSE - AIML',
+                    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                    date: new Date().toISOString().split('T')[0]
+                });
             } else {
                 playChime(false);
                 showToast(`⚠️ ${res.message}`, false);
@@ -1246,6 +1291,7 @@
         btnIphoneModal.addEventListener('click', () => {
             iphoneModal.classList.remove('hidden');
             fetchNetworkInfo();
+        initP2PSync();
         });
         btnCloseIphoneModal.addEventListener('click', () => iphoneModal.classList.add('hidden'));
 
@@ -1255,8 +1301,169 @@
                 const data = await res.json();
                 if (data.mobile_url) {
                     document.getElementById('iphone-lan-url').textContent = data.mobile_url;
+                    return;
                 }
             } catch(e) {}
+            if (window.location.protocol.startsWith('http')) {
+                const el = document.getElementById('iphone-lan-url');
+                if (el) el.textContent = window.location.href;
+            }
+        }
+
+        // WebRTC P2P Phone-to-Laptop Wireless Sync
+        let peerInstance = null;
+        let activePeerConns = [];
+        let activeRemoteConn = null;
+
+        function broadcastToHost(data) {
+            if (activeRemoteConn && activeRemoteConn.open) {
+                console.log("[P2P Remote Phone] Transmitting scan to host laptop:", data);
+                activeRemoteConn.send({
+                    type: 'scan',
+                    ...data
+                });
+                showToast(`📡 Sent to Laptop: ${data.name}`, true);
+            }
+        }
+
+        function processRemoteScan(data) {
+            const roll = (data.roll || '').toUpperCase();
+            const name = data.name || 'Student';
+            const dept = data.department || 'BTech - CSE - AIML';
+            const time = data.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            const date = data.date || new Date().toISOString().split('T')[0];
+
+            if (isServerOnline) {
+                fetch('/api/scan', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        manual_roll: roll,
+                        student_name: name,
+                        department: dept
+                    })
+                }).then(() => {
+                    fetchAttendance();
+                    fetchStats();
+                }).catch(() => {});
+            }
+
+            const exists = localAttendanceLogs.some(l => l.roll_number === roll && l.date === date);
+            if (!exists) {
+                localAttendanceLogs.unshift({
+                    roll_number: roll,
+                    name: name,
+                    department: dept,
+                    date: date,
+                    time: time,
+                    status: 'PRESENT',
+                    method: 'Phone-Sync'
+                });
+                localStorage.setItem('sru_attendance_logs', JSON.stringify(localAttendanceLogs));
+                renderLocalUI();
+            }
+
+            announceStudent(name, roll);
+            showToast(`📱 Phone Scanned: ${name} (${roll})`, true);
+        }
+
+        function switchSyncTab(tab) {
+            const p2pPanel = document.getElementById('sync-panel-p2p');
+            const lanPanel = document.getElementById('sync-panel-lan');
+            const p2pBtn = document.getElementById('tab-p2p-btn');
+            const lanBtn = document.getElementById('tab-lan-btn');
+
+            if (tab === 'p2p') {
+                p2pPanel.classList.remove('hidden');
+                lanPanel.classList.add('hidden');
+                p2pBtn.className = "flex-1 py-1.5 rounded-md bg-blue-600 text-white font-medium transition";
+                lanBtn.className = "flex-1 py-1.5 rounded-md text-slate-400 hover:text-white font-medium transition";
+            } else {
+                p2pPanel.classList.add('hidden');
+                lanPanel.classList.remove('hidden');
+                p2pBtn.className = "flex-1 py-1.5 rounded-md text-slate-400 hover:text-white font-medium transition";
+                lanBtn.className = "flex-1 py-1.5 rounded-md bg-blue-600 text-white font-medium transition";
+            }
+        }
+
+        function initP2PSync() {
+            if (typeof Peer === 'undefined') {
+                console.warn("PeerJS library not loaded, skipping P2P setup.");
+                return;
+            }
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const hostRoomId = urlParams.get('room');
+
+            if (hostRoomId) {
+                const banner = document.getElementById('remote-scanner-banner');
+                if (banner) banner.classList.remove('hidden');
+
+                peerInstance = new Peer();
+                peerInstance.on('open', () => {
+                    activeRemoteConn = peerInstance.connect(hostRoomId, { reliable: true });
+
+                    activeRemoteConn.on('open', () => {
+                        console.log("[P2P Remote Phone] Connected to Laptop Host!");
+                        showToast("🔗 Connected to Laptop! Scans will announce live on laptop.", true);
+                        const statusTxt = document.getElementById('remote-scanner-status-text');
+                        if (statusTxt) statusTxt.textContent = "🟢 Connected to Laptop! Scans announce live on laptop.";
+                    });
+
+                    activeRemoteConn.on('error', (err) => console.warn("[P2P Remote Phone Error]:", err));
+                });
+
+            } else {
+                let localRoom = sessionStorage.getItem('sru_room_id');
+                if (!localRoom) {
+                    localRoom = 'sru-' + Math.random().toString(36).substring(2, 8);
+                    sessionStorage.setItem('sru_room_id', localRoom);
+                }
+
+                peerInstance = new Peer(localRoom);
+
+                peerInstance.on('open', (id) => {
+                    console.log("[P2P Host Laptop] Listening on room:", id);
+                    const currentBase = window.location.origin + window.location.pathname;
+                    const roomUrl = currentBase + '?room=' + encodeURIComponent(id);
+
+                    const qrImg = document.getElementById('qr-code-img');
+                    if (qrImg) {
+                        qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(roomUrl)}`;
+                    }
+                    const urlDisp = document.getElementById('p2p-url-display');
+                    if (urlDisp) {
+                        urlDisp.innerHTML = `<a href="${roomUrl}" target="_blank" class="text-emerald-400 hover:underline">Or tap to open: ${roomUrl}</a>`;
+                    }
+                });
+
+                peerInstance.on('connection', (conn) => {
+                    activePeerConns.push(conn);
+                    const statusDot = document.getElementById('p2p-status-dot');
+                    const statusText = document.getElementById('p2p-status-text');
+                    if (statusDot) statusDot.className = "w-2 h-2 rounded-full bg-emerald-400";
+                    if (statusText) {
+                        statusText.textContent = "📱 Phone Connected Wirelessly!";
+                        statusText.className = "text-emerald-300 font-semibold";
+                    }
+
+                    showToast("📱 iPhone Scanner Connected Wirelessly!", true);
+
+                    conn.on('data', (data) => {
+                        if (data && data.type === 'scan') {
+                            processRemoteScan(data);
+                        }
+                    });
+
+                    conn.on('close', () => {
+                        if (statusDot) statusDot.className = "w-2 h-2 rounded-full bg-amber-400 animate-pulse";
+                        if (statusText) {
+                            statusText.textContent = "Waiting for phone to scan...";
+                            statusText.className = "text-slate-300";
+                        }
+                    });
+                });
+            }
         }
 
         // Audio Unmute on first user touch/click/keypress (Satisfies Chrome autoplay policy)
@@ -1283,6 +1490,7 @@
         localStorage.removeItem('sru_attendance_logs');
 
         fetchNetworkInfo();
+        initP2PSync();
         checkServerConnection().then(() => {
             fetchStats();
             fetchAttendance();
