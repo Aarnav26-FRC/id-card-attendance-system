@@ -19,8 +19,19 @@ except ImportError:
     print("[NOTICE] OpenCV (cv2) is not installed. Run 'pip install opencv-python' in your terminal.")
 
 # Initialize Flask app
-app = Flask(__name__)
-DB_NAME = "attendance.db"
+app = Flask(__name__, template_folder="templates")
+
+# In serverless environments like Vercel, the root filesystem is read-only except /tmp
+if os.environ.get("VERCEL"):
+    DB_NAME = "/tmp/attendance.db"
+    if not os.path.exists(DB_NAME) and os.path.exists("attendance.db"):
+        try:
+            import shutil
+            shutil.copy2("attendance.db", DB_NAME)
+        except Exception:
+            pass
+else:
+    DB_NAME = "attendance.db"
 
 # Optional: Try to import EasyOCR if installed; provide high-speed fallback
 try:
